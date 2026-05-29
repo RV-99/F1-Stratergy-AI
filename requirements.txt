@@ -1,0 +1,3 @@
+streamlit
+fastf1
+requests
