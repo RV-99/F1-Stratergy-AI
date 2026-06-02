@@ -18,7 +18,9 @@ st.set_page_config(
 )
 
 # ── YOUR API KEY ───────────────────────────────────────────────────────────────
-GROQ_API_KEY = st.secrets.get("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", "")
+import os
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "") if hasattr(st, "secrets") else os.environ.get("GROQ_API_KEY", "")
+
 # ── CACHE SETUP ───────────────────────────────────────────────────────────────
 cache_dir = 'f1_cache'
 if not os.path.exists(cache_dir):
