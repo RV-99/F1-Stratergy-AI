@@ -31,6 +31,9 @@ fastf1.Cache.enable_cache(cache_dir)
 st.markdown("""
 <style>
 .stApp { background-color: #0f0f0f; color: #f0f0f0; }
+[data-testid="stExpander"] { background-color: #1a1a1a !important; border: 1px solid #333 !important; border-radius: 8px !important; }
+[data-testid="stExpander"] pre { background-color: #1a1a1a !important; color: #dddddd !important; }
+[data-testid="stExpander"] code { background-color: #1a1a1a !important; color: #dddddd !important; }
 p, li, ul, ol, span { color: #dddddd !important; }
 .stMarkdown p, .stMarkdown li, .stMarkdown ol, .stMarkdown ul { color: #dddddd !important; }
 [data-testid="stSidebar"] { background-color: #1a1a1a; border-right: 2px solid #e10600; }
@@ -765,8 +768,8 @@ Be specific about driver names, lap numbers, and tire choices."""
         with col2:
             st.info(f"🌤 {st.session_state.hist_weather}")
 
-        with st.expander("📊 Raw race data"):
-            st.code(st.session_state.hist_summary)
+        with st.expander("📊 Raw race data", expanded=False):
+            st.code(st.session_state.hist_summary, language=None)
 
         st.divider()
 
