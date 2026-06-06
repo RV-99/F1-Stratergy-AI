@@ -388,8 +388,8 @@ with tab_history:
     session_type = st.sidebar.selectbox("Session Type", options=[
         ("🏁 Race",              "Race",             "R"),
         ("⏱ Qualifying",         "Qualifying",       "Q"),
-        ("🏃 Sprint",             "Sprint",           "S"),
-        ("⏱ Sprint Shootout",    "Sprint Shootout",  "SQ"),
+        ("🏃 Sprint",             "Sprint Race",      "S"),
+        ("⏱ Sprint Shootout",    "Sprint Qualifying","SQ"),
         ("🔧 Practice 1",        "Practice 1",       "FP1"),
         ("🔧 Practice 2",        "Practice 2",       "FP2"),
         ("🔧 Practice 3",        "Practice 3",       "FP3"),
