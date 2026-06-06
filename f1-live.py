@@ -260,7 +260,7 @@ with tab_live:
         snapshot_lines = []
         st.markdown("### 🏁 Live Race Order")
 
-        for driver_num, pos_data in sorted_drivers[:15]:
+        for driver_num, pos_data in sorted_drivers:
             pos        = pos_data.get('position', '?')
             driver     = drivers.get(driver_num, {})
             name       = driver.get('full_name') or driver.get('last_name') or f'#{driver_num}'
@@ -271,7 +271,7 @@ with tab_live:
             stint      = stints.get(driver_num, {})
             compound   = stint.get('compound', 'Unknown')
             tire_age   = stint.get('lap_start', 0)
-            tire_laps  = (current_lap - tire_age) if tire_age else '?'
+            tire_laps  = max(0, current_lap - tire_age) if (tire_age and current_lap > 0) else current_lap if tire_age == 0 else '?'
 
             # pit count
             driver_pits = pits.get(driver_num, [])
