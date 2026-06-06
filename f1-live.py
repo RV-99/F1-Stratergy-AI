@@ -168,29 +168,50 @@ def fetch_live_data():
         return None, None, None, None, None, 0, "Error", str(e)
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)  # cache for 1 hour only
 def get_schedule(year, session_type="Race"):
     """Get race calendar — OpenF1 for 2026+, FastF1 for 2018-2025."""
+    import pandas as pd
     if year >= 2026:
-        import pandas as pd
-        r = requests.get(f"https://api.openf1.org/v1/sessions?session_type={session_type}&year={year}", timeout=10)
-        sessions = [s for s in r.json() if isinstance(s, dict)]
+        # try exact session type first, then fallback to all sessions
+        r = requests.get(f"https://api.openf1.org/v1/sessions?year={year}", timeout=15)
+        try:
+            all_sessions = [s for s in r.json() if isinstance(s, dict)]
+        except:
+            return pd.DataFrame()
+
+        # filter by session type — try multiple name variants
+        type_variants = {
+            "Race":              ["Race"],
+            "Qualifying":        ["Qualifying", "Shootout"],
+            "Sprint Race":       ["Sprint Race", "Sprint"],
+            "Sprint Qualifying": ["Sprint Qualifying", "Sprint Shootout"],
+            "Practice 1":        ["Practice 1"],
+            "Practice 2":        ["Practice 2"],
+            "Practice 3":        ["Practice 3"],
+        }
+        variants = type_variants.get(session_type, [session_type])
+        sessions = [s for s in all_sessions if any(v.lower() in (s.get("session_name") or s.get("session_type") or "").lower() for v in variants)]
+
+        # if nothing found with filter, return empty
         if not sessions:
             return pd.DataFrame()
+
+        # deduplicate by meeting name — keep first occurrence
         rows = []
-        seen_names = {}  # deduplicate by meeting name
-        for i, s in enumerate(sessions):
-            name = (s.get('meeting_name') or s.get('location') or f"Round {i+1}")
-            if name not in seen_names:
-                seen_names[name] = True
+        seen = set()
+        for s in sessions:
+            name = (s.get('meeting_name') or s.get('location') or 'Unknown')
+            if name not in seen:
+                seen.add(name)
                 rows.append({
-                    'EventName':    name,
-                    'RoundNumber':  len(rows) + 1,
-                    'session_key':  s.get('session_key'),
-                    'EventFormat':  'conventional',
-                    'date_start':   s.get('date_start', '')
+                    'EventName':   name,
+                    'RoundNumber': len(rows) + 1,
+                    'session_key': s.get('session_key'),
+                    'EventFormat': 'conventional',
+                    'date_start':  s.get('date_start', '')
                 })
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
     else:
         schedule = fastf1.get_event_schedule(year, include_testing=False)
         return schedule[schedule['EventFormat'] != 'testing']
