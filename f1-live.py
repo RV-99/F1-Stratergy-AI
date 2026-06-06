@@ -534,9 +534,10 @@ with tab_history:
                 lap_end   = s.get('lap_end', '?')
                 compound_info.append(f"{comp}({lap_start}-{lap_end})")
 
-            # DNF detection
+            # DNF detection — driver must complete less than 90% of leader laps
             driver_max_lap = laps_by_driver.get(dn, 0)
-            is_dnf = driver_max_lap < (max_lap_overall - 2) and max_lap_overall > 5
+            dnf_threshold  = max_lap_overall * 0.90
+            is_dnf = (driver_max_lap < dnf_threshold) and max_lap_overall > 3 and driver_max_lap > 0
             dnf_note = f" ⚠️ DNF on lap {driver_max_lap}" if is_dnf else ""
 
             # fastest lap flag
