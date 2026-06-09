@@ -31,6 +31,16 @@ fastf1.Cache.enable_cache(cache_dir)
 st.markdown("""
 <style>
 .stApp { background-color: #0f0f0f; color: #f0f0f0; }
+
+/* Dropdown styling */
+div[data-baseweb="select"] * { background-color: #1a1a1a !important; color: #f0f0f0 !important; }
+div[data-baseweb="popover"] * { background-color: #1a1a1a !important; color: #f0f0f0 !important; }
+div[data-baseweb="menu"] { background-color: #1a1a1a !important; }
+div[data-baseweb="menu"] li { background-color: #1a1a1a !important; color: #f0f0f0 !important; }
+div[data-baseweb="menu"] li:hover { background-color: #2a2a2a !important; }
+div[data-baseweb="option"] { background-color: #1a1a1a !important; color: #f0f0f0 !important; }
+div[data-baseweb="option"]:hover { background-color: #e10600 !important; }
+[data-testid="stSelectbox"] div { background-color: #1a1a1a !important; color: #f0f0f0 !important; border-color: #444 !important; }
 [data-testid="stExpander"] { background-color: #1a1a1a !important; border: 1px solid #333 !important; border-radius: 8px !important; }
 [data-testid="stExpander"] pre { background-color: #1a1a1a !important; color: #dddddd !important; }
 [data-testid="stExpander"] code { background-color: #1a1a1a !important; color: #dddddd !important; }
@@ -182,16 +192,29 @@ def get_schedule(year, session_type="Race"):
 
         # filter by session type — try multiple name variants
         type_variants = {
-            "Race":              ["Race"],
+            "Race":              ["Race", "Grand Prix"],
             "Qualifying":        ["Qualifying", "Shootout"],
             "Sprint Race":       ["Sprint Race", "Sprint"],
             "Sprint Qualifying": ["Sprint Qualifying", "Sprint Shootout"],
-            "Practice 1":        ["Practice 1"],
-            "Practice 2":        ["Practice 2"],
-            "Practice 3":        ["Practice 3"],
+            "Practice 1":        ["Practice 1", "FP1", "Free Practice 1"],
+            "Practice 2":        ["Practice 2", "FP2", "Free Practice 2"],
+            "Practice 3":        ["Practice 3", "FP3", "Free Practice 3"],
         }
         variants = type_variants.get(session_type, [session_type])
-        sessions = [s for s in all_sessions if any(v.lower() in (s.get("session_name") or s.get("session_type") or "").lower() for v in variants)]
+
+        def matches_session(s):
+            name = (s.get("session_name") or s.get("session_type") or "").lower()
+            stype = (s.get("session_type") or "").lower()
+            # for Race: match "race" but NOT "sprint race"
+            if session_type == "Race":
+                return ("race" in name or "grand prix" in name) and "sprint" not in name
+            return any(v.lower() in name or v.lower() in stype for v in variants)
+
+        sessions = [s for s in all_sessions if matches_session(s)]
+
+        # if still empty, show all sessions as fallback
+        if not sessions:
+            sessions = all_sessions
 
         # if nothing found with filter, return empty
         if not sessions:
