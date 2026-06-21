@@ -247,7 +247,7 @@ st.markdown("<p style='color:#888;margin-top:-10px'>Real race data. Real strateg
 
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab_live, tab_history = st.tabs(["🔴 LIVE RACE", "📚 HISTORICAL RACES"])
+tab_live, tab_history, tab_tires = st.tabs(["🔴 LIVE RACE", "📚 HISTORICAL RACES", "📊 TIRE ANALYTICS"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -844,5 +844,146 @@ Be specific about driver names, lap numbers, and tire choices."""
             <h3 style='color:white;border:none;padding:0'>Pick a race from the sidebar</h3>
             <p style='color:#888'>Analyse any race from 2018–2025 with full telemetry data.</p>
             <p style='color:#555'>Try: Abu Dhabi 2021 · Monaco 2024 · Belgian GP 2023</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3: TIRE ANALYTICS
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_tires:
+
+    st.markdown("### 📊 Tire Degradation Analysis")
+    st.markdown("<p style='color:#888'>Real lap-by-lap data from 2018–2024 races. See how each compound actually degrades at each circuit.</p>", unsafe_allow_html=True)
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        tire_circuit = st.selectbox("Circuit", options=[
+            "Austria", "Monaco", "Silverstone", "Spa", "Monza",
+            "Singapore", "Suzuka", "Bahrain", "Hungary", "Barcelona"
+        ])
+    with col_b:
+        tire_compound = st.selectbox("Compound", options=["SOFT", "MEDIUM", "HARD"])
+    with col_c:
+        tire_years = st.multiselect("Years", options=[2021, 2022, 2023, 2024], default=[2022, 2023, 2024])
+
+    analyse_tires_btn = st.button("📈 Analyse Degradation", use_container_width=False)
+
+    @st.cache_data(ttl=86400, show_spinner=False)  # cache for 24 hours
+    def get_degradation_data(circuit, compound, years):
+        """Pull lap data across multiple years and build a degradation curve."""
+        import pandas as pd
+        all_laps = []
+
+        for year in years:
+            try:
+                session = fastf1.get_session(year, circuit, 'R')
+                session.load(telemetry=False, weather=False, messages=False)
+                laps = session.laps
+
+                filtered = laps[
+                    (laps['Compound'] == compound) &
+                    (laps['LapTime'].notna()) &
+                    (laps['PitOutTime'].isna()) &
+                    (laps['PitInTime'].isna()) &
+                    (laps['TyreLife'].notna())
+                ].copy()
+
+                filtered['LapTimeSeconds'] = filtered['LapTime'].dt.total_seconds()
+                filtered['Year'] = year
+                all_laps.append(filtered[['Year', 'Driver', 'TyreLife', 'LapTimeSeconds']])
+            except Exception:
+                continue
+
+        if not all_laps:
+            return None, None
+
+        combined = pd.concat(all_laps, ignore_index=True)
+        if len(combined) == 0:
+            return None, None
+
+        median_time = combined['LapTimeSeconds'].median()
+        clean = combined[combined['LapTimeSeconds'] < median_time * 1.15].copy()
+
+        degradation = clean.groupby('TyreLife')['LapTimeSeconds'].agg(['mean', 'std', 'count']).reset_index()
+        degradation = degradation[degradation['count'] >= 2]
+
+        return degradation, len(clean)
+
+    if analyse_tires_btn and tire_years:
+        with st.spinner(f"Analysing {tire_compound} tire data at {tire_circuit} ({', '.join(map(str,tire_years))})... this may take a minute on first load"):
+            degradation, sample_size = get_degradation_data(tire_circuit, tire_compound, tuple(tire_years))
+
+        if degradation is None or len(degradation) < 3:
+            st.warning(f"Not enough {tire_compound} tire data found for {tire_circuit} in the selected years. Try different years or a different compound.")
+        else:
+            st.session_state.tire_degradation = degradation
+            st.session_state.tire_sample_size = sample_size
+            st.session_state.tire_circuit_label = f"{tire_circuit} — {tire_compound} compound ({', '.join(map(str,tire_years))})"
+
+    if 'tire_degradation' in st.session_state:
+        degradation = st.session_state.tire_degradation
+        sample_size = st.session_state.tire_sample_size
+        label = st.session_state.tire_circuit_label
+
+        st.markdown(f"<h3 style='border-left:4px solid #e10600;padding-left:12px'>{label}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#666'>Based on {sample_size} valid race laps</p>", unsafe_allow_html=True)
+
+        # show the chart
+        chart_data = degradation.rename(columns={'TyreLife': 'Tire Age (laps)', 'mean': 'Avg Lap Time (s)'})
+        st.line_chart(chart_data.set_index('Tire Age (laps)')['Avg Lap Time (s)'])
+
+        # calculate degradation rate
+        if len(degradation) >= 5:
+            first_avg = degradation.head(5)['mean'].mean()
+            last_avg  = degradation.tail(5)['mean'].mean()
+            span      = degradation['TyreLife'].max() - degradation['TyreLife'].min()
+            deg_rate  = (last_avg - first_avg) / span if span > 0 else 0
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Fresh tire pace", f"{first_avg:.2f}s")
+            with col2:
+                st.metric("Worn tire pace", f"{last_avg:.2f}s")
+            with col3:
+                st.metric("Degradation rate", f"{deg_rate:.3f}s/lap")
+
+            with st.expander("📋 Raw degradation data"):
+                st.dataframe(degradation, use_container_width=True)
+
+            # AI explanation
+            st.divider()
+            if st.button("🤖 Get AI Explanation"):
+                with st.spinner("Analysing degradation pattern..."):
+                    prompt = f"""Tire degradation data for {label}:
+
+Fresh tire average lap time: {first_avg:.2f}s
+Worn tire average lap time ({span} laps later): {last_avg:.2f}s
+Degradation rate: {deg_rate:.3f} seconds per lap of tire age
+Sample size: {sample_size} race laps from {', '.join(map(str,tire_years))}
+
+Explain this degradation pattern:
+1. Is this a high or low degradation rate compared to typical F1 tire behavior?
+2. What does this mean practically for race strategy at this circuit?
+3. At what tire age would a driver typically want to pit based on this curve?
+4. What track characteristics likely cause this degradation level (high-speed corners, abrasive surface, traction zones, etc)?"""
+
+                    messages = [
+                        {"role": "system", "content": "You are an F1 tire engineer explaining degradation data to fans. Be specific and technical but clear."},
+                        {"role": "user", "content": prompt}
+                    ]
+                    explanation = ask_groq(messages, max_tokens=600)
+                    st.markdown(f"""
+                    <div style='background:#1a0000;border:1px solid #e10600;border-radius:8px;padding:20px;margin-top:16px'>
+                        <div style='color:#e10600;font-weight:700;margin-bottom:12px;font-size:0.85rem'>🔧 TIRE ENGINEER ANALYSIS</div>
+                        <div style='color:#dddddd;line-height:1.7'>{explanation}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style='text-align:center;padding:60px 20px'>
+            <div style='font-size:3rem'>📊</div>
+            <h3 style='color:white;border:none;padding:0'>Pick a circuit and compound to begin</h3>
+            <p style='color:#888'>Real degradation curves built from years of actual race data.</p>
         </div>
         """, unsafe_allow_html=True)
