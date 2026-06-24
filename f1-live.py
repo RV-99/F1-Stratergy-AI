@@ -27,6 +27,176 @@ if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
 fastf1.Cache.enable_cache(cache_dir)
 
+# ── F1 KNOWLEDGE DOCUMENT ─────────────────────────────────────────────────────
+F1_KNOWLEDGE = """
+=== F1 RULES & TECHNICAL KNOWLEDGE (2026 SEASON) ===
+
+RACE FLAGS:
+- Green flag: Track clear, racing resumes
+- Yellow flag: Hazard ahead, no overtaking, must slow down
+- Double yellow: Extreme hazard, be prepared to stop
+- Red flag: Session stopped immediately, drivers return to pit lane
+- Blue flag: Shown to lapped drivers to let leader pass
+- Black & white flag: Warning for unsportsmanlike behavior
+- Black flag: Driver disqualified, must return to pits immediately
+- Chequered flag: End of session/race
+- Red & yellow striped flag: Slippery surface ahead
+
+SAFETY CAR RULES:
+- Safety Car (SC): Deployed for major incidents. All drivers must queue behind SC.
+  No overtaking except when SC is returning to pits. Lapped cars may un-lap themselves.
+- Virtual Safety Car (VSC): Minor incidents. All drivers must reduce speed by ~40%.
+  Delta time shown on steering wheel. No overtaking permitted.
+- Key strategy implication: Teams use SC/VSC periods to make "free" pit stops
+  since gap to cars ahead is neutralised. This can completely change race outcomes.
+
+PENALTY TYPES:
+- 5-second penalty: Added to race time at next pit stop or end of race
+- 10-second penalty: Added to race time at next pit stop or end of race
+- Drive-through penalty: Must drive through pit lane without stopping (~20-25s lost)
+- Stop-go penalty (10s): Must stop in pit box for 10 seconds
+- Grid penalty: Applied to next race qualifying result (3, 5, 10, or back of grid)
+- Disqualification (DSQ): Removed from results entirely
+- Reprimand: Warning, 3 reprimands = 10-place grid penalty
+
+COMMON PENALTY CAUSES:
+- Forcing another driver off track
+- Causing a collision
+- Unsafe release from pit box
+- Speeding in pit lane (>80km/h)
+- Ignoring blue flags
+- Track limits violations (4+ times = investigated)
+- Cutting chicanes and gaining advantage
+- Not following VSC delta times
+
+DRS (Drag Reduction System) — 2026 CHANGES:
+- In 2025 and before: DRS opens rear wing to reduce drag on straights
+- In 2026: Active Aerodynamics (AAS) replaces DRS entirely
+  - Front and rear wing can actively adjust throughout lap
+  - "Z-mode" for straight-line speed (low drag)
+  - "X-mode" for cornering (high downforce)
+  - Available to all drivers at all times, not just within 1 second
+  - Fundamentally changes overtaking dynamics
+
+2026 REGULATION CHANGES:
+- Smaller, lighter cars (768kg vs 800kg)
+- New 1.6L V6 hybrid power unit with 50/50 ICE/electrical power split
+- MGU-H removed, single MGU-K retained but more powerful
+- Active Aerodynamics (AAS) replaces DRS
+- Narrower cars for easier racing
+- Pirelli continues as tire supplier
+- New constructors: Cadillac (11th team, American)
+- Ferrari-powered teams: Ferrari, Haas (customer), others
+- Mercedes-powered: Mercedes works, McLaren (customer)
+- Red Bull powertrains (RBPT): Red Bull, Racing Bulls
+- Renault/Alpine: Alpine works team
+- Audi: Sauber rebranded as Audi works team
+
+TIRE COMPOUNDS (Pirelli):
+- C1 (Hardest): Slowest, most durable, used at high-deg circuits
+- C2: Hard compound, durable
+- C3: Medium compound, balanced
+- C4: Soft compound, fast but wears quickly
+- C5 (Softest): Fastest, least durable, used at smooth low-deg circuits
+- Pirelli nominates 3 compounds per race weekend (Hard/Medium/Soft labels)
+- Intermediate: Wet weather, treaded, for damp but not fully wet conditions
+- Full Wet: Heavy rain only, extreme wet weather
+
+TIRE STRATEGY CONCEPTS:
+- Undercut: Pit before rival to get fresh tires, hope to come out ahead
+- Overcut: Stay out longer than rival, hope tire advantage wears off
+- One-stop: Single pit stop, slower but saves time in pits
+- Two-stop: Two pit stops, faster tires but 2x pit time lost
+- Free pit stop: Pit during SC/VSC without losing position
+- Tire bank: Teams have 13 sets of dry tires per weekend to manage
+
+POINTS SYSTEM:
+- P1: 25 points
+- P2: 18 points  
+- P3: 15 points
+- P4: 12 points
+- P5: 10 points
+- P6: 8 points
+- P7: 6 points
+- P8: 4 points
+- P9: 2 points
+- P10: 1 point
+- Fastest lap: 1 bonus point (if finishing in top 10)
+- Sprint race: 8-7-6-5-4-3-2-1 for top 8
+
+PIT STOP RULES:
+- Minimum 4 crew members allowed over the wall
+- Unsafe release: Exiting pit box into path of another car = penalty
+- Pit lane speed limit: 80km/h (60km/h at some circuits)
+- Must use at least 2 different dry compounds during race (if no red flag)
+"""
+
+# ── FETCH 2026 CHAMPIONSHIP STANDINGS ─────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def get_championship_standings():
+    """Fetch current 2026 driver and constructor standings from OpenF1."""
+    try:
+        # get latest race results to build standings
+        r = requests.get("https://api.openf1.org/v1/sessions?session_type=Race&year=2026", timeout=10)
+        sessions = [s for s in r.json() if isinstance(s, dict)]
+        if not sessions:
+            return "Championship standings unavailable.", "Championship standings unavailable."
+
+        # get results from all 2026 races
+        driver_points = {}
+        constructor_points = {}
+
+        for session in sessions:
+            sk = session.get('session_key')
+            if not sk:
+                continue
+            try:
+                pos_r = requests.get(f"https://api.openf1.org/v1/position?session_key={sk}", timeout=8)
+                positions = pos_r.json()
+                dr_r = requests.get(f"https://api.openf1.org/v1/drivers?session_key={sk}", timeout=8)
+                drivers = {d.get('driver_number'): d for d in dr_r.json() if isinstance(d, dict)}
+
+                points_map = {1:25,2:18,3:15,4:12,5:10,6:8,7:6,8:4,9:2,10:1}
+                seen = set()
+                latest_pos = {}
+                for p in positions:
+                    if isinstance(p, dict):
+                        dn = p.get('driver_number')
+                        latest_pos[dn] = p.get('position', 99)
+
+                for dn, pos in latest_pos.items():
+                    if dn in seen: continue
+                    seen.add(dn)
+                    pts = points_map.get(pos, 0)
+                    if pts == 0: continue
+                    driver = drivers.get(dn, {})
+                    name = driver.get('full_name') or driver.get('last_name') or f'#{dn}'
+                    team = driver.get('team_name', 'Unknown')
+                    driver_points[name] = driver_points.get(name, 0) + pts
+                    constructor_points[team] = constructor_points.get(team, 0) + pts
+            except:
+                continue
+
+        # format standings
+        driver_standing = "\n".join([f"  {i+1}. {n}: {p} pts" for i,(n,p) in enumerate(sorted(driver_points.items(), key=lambda x:-x[1])[:10])])
+        constructor_standing = "\n".join([f"  {i+1}. {t}: {p} pts" for i,(t,p) in enumerate(sorted(constructor_points.items(), key=lambda x:-x[1])[:10])])
+
+        return driver_standing or "Standings unavailable.", constructor_standing or "Standings unavailable."
+    except:
+        return "Standings unavailable.", "Standings unavailable."
+
+driver_standings, constructor_standings = get_championship_standings()
+
+SEASON_CONTEXT = f"""
+=== 2026 CHAMPIONSHIP STANDINGS (CURRENT) ===
+
+DRIVERS:
+{driver_standings}
+
+CONSTRUCTORS:
+{constructor_standings}
+"""
+
 # ── CUSTOM CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -107,6 +277,33 @@ def ask_groq(messages, max_tokens=800):
     if "choices" in result:
         return result["choices"][0]["message"]["content"]
     return f"AI Error: {result}"
+
+
+def get_race_control_messages(session_key):
+    """Fetch safety car, VSC, flags and penalties from OpenF1 race control."""
+    try:
+        r = requests.get(f"https://api.openf1.org/v1/race_control?session_key={session_key}", timeout=10)
+        messages = [m for m in r.json() if isinstance(m, dict)]
+        if not messages:
+            return ""
+
+        important = []
+        for msg in messages:
+            category = msg.get('category', '')
+            flag     = msg.get('flag', '')
+            message  = msg.get('message', '')
+            lap      = msg.get('lap_number', '?')
+
+            if any(x in category.upper() for x in ['SAFETY CAR', 'VSC', 'FLAG', 'PENALTY', 'DECISION']):
+                important.append(f"Lap {lap}: [{category}] {flag} {message}".strip())
+            elif any(x in str(message).upper() for x in ['SAFETY CAR', 'VSC', 'PENALTY', 'DRIVE THROUGH', 'STOP GO', 'BLACK', 'RED FLAG']):
+                important.append(f"Lap {lap}: {message}")
+
+        if not important:
+            return ""
+        return "\n".join(important[:30])  # cap at 30 messages
+    except:
+        return ""
 
 
 def get_tire_color(compound):
@@ -362,7 +559,7 @@ Give urgent, actionable strategy advice:
 3. One key strategic call each top-3 team should make immediately."""
 
                 messages = [
-                    {"role": "system", "content": "You are a live F1 race strategist giving real-time advice during a race. Be urgent, specific, and direct. Use driver names and explain tire age implications clearly."},
+                    {"role": "system", "content": f"You are a live F1 race strategist giving real-time advice during a race. Be urgent, specific, and direct. Use driver names and explain tire age implications clearly.\n\n{F1_KNOWLEDGE}\n\n{SEASON_CONTEXT}"},
                     {"role": "user",   "content": live_prompt}
                 ]
                 advice = ask_groq(messages, max_tokens=600)
@@ -781,18 +978,31 @@ Give a detailed strategic analysis:
 4. **DNFs and incidents** — for any driver marked DNF, explain what happened and how it affected the race
 5. **Biggest mover** — who gained the most positions from grid to finish and how"""
 
-                system_prompt = """You are an expert F1 race strategist and commentator. You have deep knowledge of:
-- Tire compound degradation and stint management
-- Undercut and overcut strategies
-- DNFs, retirements, and race incidents
-- Safety car and VSC strategy implications
-- Grid position vs finishing position analysis
-- Qualifying pace and sector analysis
-- Sprint race dynamics
+                # fetch race control messages for this session
+                rc_messages = ""
+                if year >= 2026 and 'session_key' in dir():
+                    rc_messages = get_race_control_messages(session_key)
+                elif year < 2026:
+                    try:
+                        ff1_session_key = session.session_info.get('Key', '') if hasattr(session, 'session_info') else ''
+                        if ff1_session_key:
+                            rc_messages = get_race_control_messages(ff1_session_key)
+                    except:
+                        pass
 
-When you see DNF next to a driver's name, always explain what their retirement means strategically.
-Be specific about driver names, lap numbers, and tire choices."""
+                rc_context = f"\n\nRACE CONTROL MESSAGES (Safety Cars, Flags, Penalties):\n{rc_messages}" if rc_messages else ""
 
+                system_prompt = f"""You are an expert F1 race strategist and commentator with access to comprehensive F1 knowledge.
+
+{F1_KNOWLEDGE}
+
+{SEASON_CONTEXT}
+
+Use this knowledge to give highly accurate, technically detailed analysis. When you see DNF next to a driver's name, explain what their retirement means strategically. Be specific about driver names, lap numbers, tire choices, and reference the rules where relevant."""
+
+                # append race control messages to the analysis
+                if rc_context:
+                    analysis_prompt += rc_context
                 initial_msg = analysis_prompt
 
                 st.session_state.hist_messages = [
