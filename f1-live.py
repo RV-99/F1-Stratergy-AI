@@ -953,17 +953,28 @@ Analyse this sprint:
 3. **DNFs and incidents** — explain any retirements and their impact
 4. **Race weekend implications** — how does this affect the main race strategy?"""
                 elif "Practice" in session_label:
+                    # for practice, build a cleaner pace-focused summary
+                    practice_note = """NOTE: This is a PRACTICE SESSION not a race.
+- Drivers do multiple short runs testing setups and tire compounds
+- Pit stops are normal and expected (not strategy decisions)
+- DNF flags just mean driver stopped early (common in practice)
+- Focus on PACE and TIRE DATA, not race strategy
+- Lap times are most important metric here"""
+
                     analysis_prompt = f"""Practice session: {race_label}
 Weather: {weather_str}
 
-Practice data:
+{practice_note}
+
+Practice timing data (best stints per driver):
 {race_summary}
 
-Analyse this practice session:
-1. **Pace leaders** — who looks fastest and why?
-2. **Tire data gathered** — what did teams learn about compounds?
-3. **Setup concerns** — who seems to be struggling?
-4. **Race predictions** — based on practice, who looks strong for the race?"""
+Analyse this practice session ONLY in terms of practice-relevant insights:
+1. **Pace hierarchy** — who looks genuinely fast vs who is sandbagging?
+2. **Tire program** — which compounds did each team prioritise and what does that tell us?
+3. **Setup direction** — based on pace on different compounds, who seems to have a well-balanced car?
+4. **Weekend prediction** — who looks like a genuine threat for qualifying and the race?
+5. **Concerns** — any team or driver that looks off the pace or struggling with setup?"""
                 else:
                     analysis_prompt = f"""Race: {race_label}
 Weather: {weather_str}
@@ -992,13 +1003,29 @@ Give a detailed strategic analysis:
 
                 rc_context = f"\n\nRACE CONTROL MESSAGES (Safety Cars, Flags, Penalties):\n{rc_messages}" if rc_messages else ""
 
-                system_prompt = f"""You are an expert F1 race strategist and commentator with access to comprehensive F1 knowledge.
+                # adapt system prompt based on session type
+                if "Practice" in session_label:
+                    session_role = "F1 technical analyst specialising in practice session analysis, car setup, and race pace prediction"
+                    session_instruction = "This is a PRACTICE SESSION. Do NOT treat it like a race. Focus on pace, tire programs, and setup direction. Pit stops in practice are normal and not strategic decisions."
+                elif "Qualifying" in session_label or "Shootout" in session_label:
+                    session_role = "F1 qualifying analyst specialising in single-lap pace, tire management, and grid position implications"
+                    session_instruction = "This is a QUALIFYING SESSION. Focus on single-lap pace, sector times, tire compound choices in Q2, and how the grid sets up the race strategy."
+                elif "Sprint" in session_label:
+                    session_role = "F1 sprint race strategist understanding the unique dynamics of short sprint races"
+                    session_instruction = "This is a SPRINT RACE. It is shorter than a grand prix (usually 17-19 laps), typically no mandatory pit stops, and sets up the grid for the main race."
+                else:
+                    session_role = "F1 race strategist and commentator"
+                    session_instruction = "This is a RACE. Analyse strategy, tire management, pit stops, and race incidents in full detail."
+
+                system_prompt = f"""You are an expert {session_role} with access to comprehensive F1 knowledge.
+
+IMPORTANT SESSION CONTEXT: {session_instruction}
 
 {F1_KNOWLEDGE}
 
 {SEASON_CONTEXT}
 
-Use this knowledge to give highly accurate, technically detailed analysis. When you see DNF next to a driver's name, explain what their retirement means strategically. Be specific about driver names, lap numbers, tire choices, and reference the rules where relevant."""
+Use this knowledge to give highly accurate, technically detailed analysis. Be specific about driver names, lap numbers, tire choices, and reference the rules where relevant."""
 
                 # append race control messages to the analysis
                 if rc_context:
